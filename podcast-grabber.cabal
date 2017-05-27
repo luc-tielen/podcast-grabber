@@ -1,0 +1,60 @@
+name:                podcast-grabber
+version:             0.1.0.0
+-- synopsis:
+-- description:
+homepage:            https://github.com/luc-tielen/podcast-grabber#README.md
+license:             BSD3
+license-file:        LICENSE
+author:              Luc Tielen
+copyright:           2017 Luc Tielen
+category:            Web
+build-type:          Simple
+extra-source-files:  README.md
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     Lib
+                     , Podcast.DB
+                     , Podcast.Types
+                     , Podcast.OptionParser
+                     , Podcast.Rss
+                     , Podcast.XMLParser
+  build-depends:       base >= 4.7 && < 5
+                     , containers >= 0.5.7 && < 1
+                     , text >= 1.2.2 && < 2
+                     , bytestring >= 0.10.8 && < 1
+                     , aeson >= 1.0.2 && < 1.1
+                     , hxt >= 9.3.1 && < 10
+                     , optparse-applicative >= 0.13.2 && < 1
+                     , http-client >= 0.5.6 && < 1
+                     , http-client-tls >= 0.3.4 && < 1
+                     , directory >= 1.3.0 && < 2
+                     , filepath >= 1.4.1 && < 2
+                     , stm >= 2.4.4.1 && < 3
+  ghc-options:         -Wall -O2 
+  default-language:    Haskell2010
+
+executable podcast-grabber
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  ghc-options:         -Wall -O2 -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       base
+                     , containers >= 0.5.7 && < 1
+                     , optparse-applicative
+                     , podcast-grabber
+                     , directory >= 1.3.0 && < 2
+  default-language:    Haskell2010
+
+test-suite podcast-grabber-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  build-depends:       base
+                     , podcast-grabber
+  ghc-options:         -Wall -O2 -threaded -rtsopts -with-rtsopts=-N
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/luc-tielen/podcast-grabber
