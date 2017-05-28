@@ -20,6 +20,7 @@ import System.Directory
 import System.FilePath
 import Data.Map (delete, fromListWith, unionWith)
 import Data.Maybe
+import qualified Data.List as List (partition)
 import qualified Data.Map as Map (lookup)
 import qualified Data.ByteString.Lazy as B
 
@@ -103,7 +104,7 @@ handleUpdateResults f oldDB fetchResults = do
   mapM_ fmtError badResults
   writeDB f newDB
   where newDB = updateFeedDB goodResults oldDB
-        (badResults, goodResults) = break isSuccess results
+        (goodResults, badResults) = List.partition isSuccess results
         results = concatMap snd fetchResults
         isSuccess (FetchSuccess _ _) = True
         isSuccess _                  = False
