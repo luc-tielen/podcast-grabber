@@ -14,7 +14,7 @@ newtype RssFeedXML = Rss { getRss :: B.ByteString } deriving Show
 
 makeRss :: B.ByteString -> RssFeedXML
 makeRss s = Rss . dropXMLTag $ s
-  where dropXMLTag = B.unlines . (drop 1) . B.lines
+  where dropXMLTag = B.drop 1 . B.dropWhile (\c -> c /= '>')
 
 data CmdLineFlags = AddPodcast Feed
                   | RemovePodcast Feed
