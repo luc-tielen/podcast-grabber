@@ -1,4 +1,6 @@
 
+{-# LANGUAGE BangPatterns #-}
+
 module Lib ( module Podcast.Types
            , module Podcast.OptionParser
            , dbDir
@@ -18,11 +20,11 @@ import Control.Monad.STM
 import Control.Concurrent.STM.TVar
 import System.Directory
 import System.FilePath
-import Data.Map (delete, fromListWith, unionWith)
+import Data.Map.Strict (delete, fromListWith, unionWith)
 import Data.Maybe
 import qualified Data.List as List (partition)
-import qualified Data.Map as Map (lookup)
-import qualified Data.ByteString.Lazy as B
+import qualified Data.Map.Strict as Map (lookup)
+import qualified Data.ByteString as B
 
 
 data FetchResult = FetchFeedError Feed HttpException
@@ -150,15 +152,18 @@ fetchEp db feed mgr queue ep@(Episode (Title title) _) = forkIO $ do
   if isOld
     then do atomically $ addToQueue [SkippedOldEpisode feed ep] queue
     else do
+      dir <- dbDir
+      let episodeFile = dir </> getEpisodeFilePath ep
+      createEmptyFile episodeFile
       putStrLn $ "Fetching episode: " ++ title
-      audioResult <- fetchEpisode mgr ep
+      audioResult <- fetchEpisode mgr (B.appendFile episodeFile) ep
       case audioResult of
         Left err -> atomically $ addToQueue [FetchEpisodeError feed ep err] queue
-        Right audio -> do
-          dir <- dbDir
-          B.writeFile (dir </> getEpisodeFilePath ep) audio
-          atomically $ addToQueue [FetchSuccess feed ep] queue
+        Right _ -> atomically $ addToQueue [FetchSuccess feed ep] queue
 
+
+createEmptyFile :: FilePath -> IO ()
+createEmptyFile file = writeFile file ""
 
 getEpisodeFilePath :: Episode -> FilePath
 getEpisodeFilePath (Episode (Title title) _) = escape $ title ++ ".mp3"
@@ -168,16 +173,10 @@ getEpisodeFilePath (Episode (Title title) _) = escape $ title ++ ".mp3"
         escape' c = c
 
 isOldEpisode :: FeedDB -> Feed -> Episode -> IO Bool
-isOldEpisode feedDB feed episode = do
-  let isInDB = checkIfInDB feed episode feedDB
-  isOld <- checkIfAlreadyDownloaded episode
-  return $ isInDB || isOld
+isOldEpisode feedDB feed episode = return $ checkIfInDB feed episode feedDB
   where checkIfInDB f ep (DB _ db) = isJust $ do
           episodeList <- Map.lookup f db
           return $ elem ep episodeList
-        checkIfAlreadyDownloaded ep = do
-          dir <- dbDir
-          doesFileExist $ dir </> getEpisodeFilePath ep
 
 
 mkQueue :: STM (TVar [a])
