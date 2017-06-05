@@ -1,6 +1,5 @@
 
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings, DeriveGeneric, BangPatterns #-}
 
 module Podcast.DB ( Feed(..)
                   , Title(..)
@@ -14,7 +13,7 @@ module Podcast.DB ( Feed(..)
 
 
 import qualified Data.ByteString.Lazy as B
-import Data.Map
+import Data.Map.Strict
 import Data.Aeson
 import GHC.Generics
 
@@ -22,12 +21,12 @@ import GHC.Generics
 newtype Feed = Feed String deriving (Eq, Ord, Show, Generic)
 newtype Title = Title String deriving (Eq, Show, Generic)
 newtype Link = Link String deriving (Eq, Show, Generic)
-data Episode = Episode Title Link deriving (Eq, Show, Generic)
+data Episode = Episode !Title !Link deriving (Eq, Show, Generic)
 
 type EpisodeMap = Map Feed [Episode]
 
-data FeedDB = DB { feeds :: [Feed]
-                 , episodes :: EpisodeMap
+data FeedDB = DB { feeds :: ![Feed]
+                 , episodes :: !EpisodeMap
                  } deriving (Eq, Show, Generic)
 
 
