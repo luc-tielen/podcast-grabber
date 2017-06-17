@@ -1,6 +1,4 @@
 
-{-# LANGUAGE BangPatterns #-}
-
 module Lib ( module Podcast.Types
            , module Podcast.OptionParser
            , dbDir
@@ -14,7 +12,8 @@ import Podcast.Types
 import Podcast.OptionParser
 import Podcast.XMLParser
 import Podcast.Rss
-import Network.HTTP.Client
+import Network
+import Network.HTTP.Conduit
 import Control.Concurrent
 import Control.Monad.STM
 import Control.Concurrent.STM.TVar
@@ -24,7 +23,6 @@ import Data.Map.Strict (delete, fromListWith, unionWith)
 import Data.Maybe
 import qualified Data.List as List (partition)
 import qualified Data.Map.Strict as Map (lookup)
-import qualified Data.ByteString as B
 
 
 data FetchResult = FetchFeedError Feed HttpException
@@ -83,7 +81,7 @@ removeFeed' feed feedDB = feedDB'
 
 
 updateFeeds :: FilePath ->  IO ()
-updateFeeds f = do
+updateFeeds f = withSocketsDo $ do
   db <- readDB f
   case db of
     Left err -> do
@@ -91,12 +89,12 @@ updateFeeds f = do
       putStrLn err
     Right feedDB -> do
       mgr <- createConnManager
-      feedQueue <- atomically mkQueue
       let fs = feeds feedDB
       let numFeeds = length fs
       if numFeeds == 0
         then return ()
         else do
+          feedQueue <- atomically mkQueue
           fetchFeeds mgr feedQueue feedDB fs
           fetchResults <- atomically $ collectFromQueue numFeeds feedQueue
           handleUpdateResults f feedDB fetchResults
@@ -113,10 +111,10 @@ handleUpdateResults f oldDB fetchResults = do
         fmtError (FetchFeedError (Feed feed) err) = do
           putStrLn $ "Failed to fetch feed: " ++ feed
           putStrLn $ show err
-        fmtError (FetchEpisodeError (Feed feed) (Episode (Title title) _) err) = do
+        fmtError (FetchEpisodeError (Feed feed) (Episode (Title title) _ _) err) = do
           putStrLn $ "Failed to fetch episode: " ++ title ++ " for feed: " ++ feed
           putStrLn $ show err
-        fmtError (SkippedOldEpisode (Feed feed) (Episode (Title title) _)) = do
+        fmtError (SkippedOldEpisode (Feed feed) (Episode (Title title) _ _)) = do
           putStrLn $ "Skipped previously fetched episode: " ++ title ++ " for feed: " ++ feed
         fmtError _ = return ()
 
@@ -147,16 +145,15 @@ fetchFeed mgr feedQueue db f = forkIO $ do
         atomically $ addToQueue [(f, results)] feedQueue
 
 fetchEp :: FeedDB -> Feed -> Manager -> TVar [FetchResult] -> Episode -> IO ThreadId
-fetchEp db feed mgr queue ep@(Episode (Title title) _) = forkIO $ do
-  isOld <- isOldEpisode db feed ep
-  if isOld
+fetchEp db feed mgr queue ep@(Episode (Title title) _ _) = forkIO $ do
+  if isOldEpisode db feed ep
     then do atomically $ addToQueue [SkippedOldEpisode feed ep] queue
     else do
       dir <- dbDir
       let episodeFile = dir </> getEpisodeFilePath ep
       createEmptyFile episodeFile
       putStrLn $ "Fetching episode: " ++ title
-      audioResult <- fetchEpisode mgr (B.appendFile episodeFile) ep
+      audioResult <- fetchEpisode mgr (streamToFile episodeFile) ep
       case audioResult of
         Left err -> atomically $ addToQueue [FetchEpisodeError feed ep err] queue
         Right _ -> atomically $ addToQueue [FetchSuccess feed ep] queue
@@ -166,14 +163,15 @@ createEmptyFile :: FilePath -> IO ()
 createEmptyFile file = writeFile file ""
 
 getEpisodeFilePath :: Episode -> FilePath
-getEpisodeFilePath (Episode (Title title) _) = escape $ title ++ ".mp3"
+getEpisodeFilePath (Episode (Title title) _ pubDate) = escape episodeName
   where escape = map escape'
         escape' ' ' = '_'
         escape' '/' = '_'
         escape' c = c
+        episodeName = title ++ "_" ++ show pubDate ++ ".mp3"
 
-isOldEpisode :: FeedDB -> Feed -> Episode -> IO Bool
-isOldEpisode feedDB feed episode = return $ checkIfInDB feed episode feedDB
+isOldEpisode :: FeedDB -> Feed -> Episode -> Bool
+isOldEpisode feedDB feed episode = checkIfInDB feed episode feedDB
   where checkIfInDB f ep (DB _ db) = isJust $ do
           episodeList <- Map.lookup f db
           return $ elem ep episodeList
@@ -189,7 +187,4 @@ collectFromQueue amount queue = do
   return xs
 
 addToQueue :: [a] -> TVar [a] -> STM ()
-addToQueue xs queue = do
-  ys <- readTVar queue
-  let zs = xs ++ ys
-  writeTVar queue zs
+addToQueue xs queue = modifyTVar queue (xs ++)
